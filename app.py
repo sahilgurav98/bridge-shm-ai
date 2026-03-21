@@ -1,6 +1,6 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
+import streamlit as st
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -110,6 +110,9 @@ if training_file is not None:
                     live_data_y = []
                     live_data_x = []
                     
+                    # NEW: Variable to track if the bridge ever entered a damaged state
+                    damage_detected = False 
+                    
                     for i in range(0, len(df_live) - window_size, window_size):
                         window = df_live['Sensor_Reading'].iloc[i:i+window_size].values
                         
@@ -131,6 +134,7 @@ if training_file is not None:
                         chart_placeholder.plotly_chart(fig, width="stretch")
                         
                         if pred == 1:
+                            damage_detected = True # Flag is tripped if any damage is seen
                             alert_placeholder.error("🚨 CRITICAL ALERT: Structural Anomaly Detected in Live Stream!")
                         else:
                             alert_placeholder.success("✅ Status Nominal: Bridge is healthy.")
@@ -140,6 +144,15 @@ if training_file is not None:
                         if len(live_data_x) > 20:
                             live_data_x.pop(0)
                             live_data_y.pop(0)
+                            
+                    # --- NEW: Final Assessment Block ---
+                    st.markdown("---")
+                    st.subheader("🏁 Final Run Assessment")
+                    if damage_detected:
+                        st.error("❌ FINAL VERDICT: NOT HEALTHY. The AI detected instances of structural anomalies during the telemetry stream. Physical inspection is highly recommended.")
+                    else:
+                        st.success("✅ FINAL VERDICT: HEALTHY. The structural dynamics remained entirely within normal parameters for the duration of the stream.")
+                        
             else:
                 st.error("Live telemetry must contain ONLY 'Sensor_Reading'. Please remove the 'Status' column to prove the AI works on blind data.")
         else:
