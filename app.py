@@ -23,7 +23,7 @@ def generate_pdf_report(damage_detected, metrics):
     # Date
     pdf.set_font("Arial", size=12)
     pdf.cell(0, 10, txt=f"Report Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
-    pdf.line(10, 30, 200, 30)
+    pdf.line(10, 50, 200, 50)
     pdf.ln(10)
     
     # Model Metrics
