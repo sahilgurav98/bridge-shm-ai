@@ -7,6 +7,55 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import plotly.graph_objs as go
 import time
 from scipy.fft import fft
+from fpdf import FPDF
+import datetime
+
+# --- PDF Generation Function ---
+def generate_pdf_report(damage_detected, metrics):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, txt="Bridge Structural Health Monitoring Report", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Date
+    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 10, txt=f"Report Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True)
+    pdf.line(10, 30, 200, 30)
+    pdf.ln(10)
+    
+    # Model Metrics
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, txt="1. AI Model Verification Metrics", ln=True)
+    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 8, txt=f"Accuracy: {metrics['Accuracy']:.2f}%", ln=True)
+    pdf.cell(0, 8, txt=f"Precision: {metrics['Precision']:.2f}", ln=True)
+    pdf.cell(0, 8, txt=f"Recall: {metrics['Recall']:.2f}", ln=True)
+    pdf.cell(0, 8, txt=f"F1-Score: {metrics['F1']:.2f}", ln=True)
+    pdf.ln(10)
+    
+    # Final Verdict
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, txt="2. Live Telemetry Final Assessment", ln=True)
+    pdf.set_font("Arial", 'B', 12)
+    
+    if damage_detected:
+        pdf.set_text_color(220, 53, 69)  # Red text for damage
+        pdf.cell(0, 10, txt="VERDICT: NOT HEALTHY", ln=True)
+        pdf.set_font("Arial", size=12)
+        pdf.set_text_color(0, 0, 0)
+        pdf.multi_cell(0, 8, txt="The AI detected instances of structural anomalies during the telemetry stream. Physical inspection is highly recommended.")
+    else:
+        pdf.set_text_color(40, 167, 69)  # Green text for healthy
+        pdf.cell(0, 10, txt="VERDICT: HEALTHY", ln=True)
+        pdf.set_font("Arial", size=12)
+        pdf.set_text_color(0, 0, 0)
+        pdf.multi_cell(0, 8, txt="The structural dynamics remained entirely within normal parameters for the duration of the stream.")
+        
+    return pdf.output(dest="S").encode("latin1")
+
 
 # --- UI Styling ---
 st.set_page_config(page_title="Bridge SHM System", layout="wide")
@@ -67,14 +116,12 @@ if training_file is not None:
         X_train_df = pd.DataFrame(X_train_list)
         y_train_array = np.array(y_train_list)
         
-        # --- NEW: Display Extracted Features and Labels ---
         st.subheader("1. Extracted Feature Matrix & Labels")
         display_df = X_train_df.copy()
         display_df['Target_Label'] = y_train_array
         st.dataframe(display_df.head(10), width="stretch") # Shows the first 10 windows
         st.caption("Displaying the first 10 data windows. 'Target_Label' represents the ground truth (0=Healthy, 1=Damaged).")
         
-        # --- NEW: Train/Test Split and Model Evaluation ---
         st.subheader("2. Model Evaluation Metrics")
         
         # Split the uploaded training data to test accuracy before live deployment
@@ -86,11 +133,19 @@ if training_file is not None:
         # Generate predictions on the 30% holdout set
         preds = model.predict(X_eval)
         
+        # Save metrics for PDF rendering
+        metrics = {
+            "Accuracy": accuracy_score(y_eval, preds) * 100,
+            "Precision": precision_score(y_eval, preds, zero_division=0),
+            "Recall": recall_score(y_eval, preds, zero_division=0),
+            "F1": f1_score(y_eval, preds, zero_division=0)
+        }
+        
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Accuracy", f"{accuracy_score(y_eval, preds)*100:.2f}%")
-        col2.metric("Precision", f"{precision_score(y_eval, preds, zero_division=0):.2f}")
-        col3.metric("Recall", f"{recall_score(y_eval, preds, zero_division=0):.2f}")
-        col4.metric("F1-Score", f"{f1_score(y_eval, preds, zero_division=0):.2f}")
+        col1.metric("Accuracy", f"{metrics['Accuracy']:.2f}%")
+        col2.metric("Precision", f"{metrics['Precision']:.2f}")
+        col3.metric("Recall", f"{metrics['Recall']:.2f}")
+        col4.metric("F1-Score", f"{metrics['F1']:.2f}")
         
         st.info("✅ AI Model successfully trained and verified. Ready for blind inference.")
         st.markdown("---")
@@ -110,12 +165,10 @@ if training_file is not None:
                     live_data_y = []
                     live_data_x = []
                     
-                    # NEW: Variable to track if the bridge ever entered a damaged state
                     damage_detected = False 
                     
                     for i in range(0, len(df_live) - window_size, window_size):
                         window = df_live['Sensor_Reading'].iloc[i:i+window_size].values
-                        
                         current_features = extract_features(window)
                         
                         # INFERENCE: Model makes a prediction completely blindly
@@ -134,7 +187,7 @@ if training_file is not None:
                         chart_placeholder.plotly_chart(fig, width="stretch")
                         
                         if pred == 1:
-                            damage_detected = True # Flag is tripped if any damage is seen
+                            damage_detected = True 
                             alert_placeholder.error("🚨 CRITICAL ALERT: Structural Anomaly Detected in Live Stream!")
                         else:
                             alert_placeholder.success("✅ Status Nominal: Bridge is healthy.")
@@ -145,13 +198,23 @@ if training_file is not None:
                             live_data_x.pop(0)
                             live_data_y.pop(0)
                             
-                    # --- NEW: Final Assessment Block ---
+                    # --- Final Assessment & PDF Download ---
                     st.markdown("---")
                     st.subheader("🏁 Final Run Assessment")
+                    
                     if damage_detected:
                         st.error("❌ FINAL VERDICT: NOT HEALTHY. The AI detected instances of structural anomalies during the telemetry stream. Physical inspection is highly recommended.")
                     else:
                         st.success("✅ FINAL VERDICT: HEALTHY. The structural dynamics remained entirely within normal parameters for the duration of the stream.")
+                        
+                    # Generate and render PDF Download Button
+                    pdf_bytes = generate_pdf_report(damage_detected, metrics)
+                    st.download_button(
+                        label="📄 Download Final PDF Report",
+                        data=pdf_bytes,
+                        file_name="Bridge_SHM_Report.pdf",
+                        mime="application/pdf"
+                    )
                         
             else:
                 st.error("Live telemetry must contain ONLY 'Sensor_Reading'. Please remove the 'Status' column to prove the AI works on blind data.")
